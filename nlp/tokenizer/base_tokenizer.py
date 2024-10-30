@@ -1,9 +1,24 @@
+import os
+import warnings
+import logging
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+
+import tensorflow as tf
+tf.get_logger().setLevel(logging.ERROR)
+
+
 import spacy
 import torch
 import numpy as np
 from transformers import AutoTokenizer
 from sentence_transformers import SentenceTransformer
-from typing import List, Dict, Union, Tuple
+from typing import List, Dict, Optional
 from pathlib import Path
 
 
@@ -12,7 +27,7 @@ class NailaTokenizer:
       self,
       model_name: str = "en_core_web_sm",
       transformer_model: str = "bert-base-uncased",
-      sentence_model: str = "all-MiniLM-V6-v2"
+      sentence_model: str = "all-MiniLM-L6-v2"
   ):
     
     try:
@@ -63,7 +78,7 @@ class NailaTokenizer:
       )
     }
   
-  def get_sentence_embedding(self, text: str) -> np.ndarray:
+  def get_sentence_embedding(self, text: str) -> torch.Tensor:
 
     if text not in self.embedding_cache:
       embedding = self.sentence_transformer.encode(
@@ -72,12 +87,30 @@ class NailaTokenizer:
       )
       self.embedding_cache[text] = embedding
 
-      return self.embedding_cache[text]
+    return self.embedding_cache[text]
     
   def batch_process(
       self,
       texts: List[str],
-      include_embeddings: bool = False
+      include_embeddings: bool = False,
+      batch_size: Optional[int] = None
+  ) -> List[Dict]:
+    
+    if batch_size:
+      results = []
+
+      for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        results.extend(self._process_batch(batch, include_embeddings))
+
+      return results
+    
+    return self._process_batch(texts, include_embeddings)
+  
+  def _process_batch(
+    self,
+    texts: List[str],
+    include_embeddings: bool
   ) -> List[Dict]:
     
     results = []
@@ -87,12 +120,12 @@ class NailaTokenizer:
         'spacy': self.process_text(text),
         'transformer': self.get_transformer_encoding(text)
       }
-
+          
       if include_embeddings:
         result['embedding'] = self.get_sentence_embedding(text)
+          
+        results.append(result)
       
-      results.append(result)
-    
     return results
   
   def similarity_score(self, text1: str, text2: str) -> float:

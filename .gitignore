@@ -4,4 +4,8 @@
 # Security
 .env
 
+# Enviornments
+.venv-nlp
 
+# Python
+__pycache__
